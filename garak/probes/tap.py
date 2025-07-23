@@ -99,7 +99,7 @@ class TAP(garak.probes.Probe):
     generate an attack and to evaluate the success of that attack. Candidate routes
     to jailbreaking the target are maintained in a tree, which is proactively pruned."""
 
-    lang = "en"
+    lang = "*"
     recommended_detector = ["mitigation.MitigationBypass"]
     tags = [
         "avid-effect:security:S0403",

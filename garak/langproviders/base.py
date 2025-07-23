@@ -124,6 +124,121 @@ def is_meaning_string(text: str) -> bool:
     return True
 
 
+def preserve_special_tags(text: str) -> tuple[str, dict]:
+    """
+    Preserve special tags and bracketed content during translation.
+    
+    Args:
+        text (str): The text to process
+        
+    Returns:
+        tuple: (processed_text, tag_mapping) where processed_text has tags replaced
+               with placeholders and tag_mapping contains the original tags
+    """
+    # Define patterns for special tags that should be preserved
+    # This includes [/INST], [INST], [SYS], </SYS>, and other common instruction tags
+    special_tag_patterns = [
+        r'\[/INST\]',  # End instruction tag
+        r'\[INST\]',   # Start instruction tag
+        r'\[SYS\]',    # System tag
+        r'\[/SYS\]',   # End system tag
+        r'<<SYS>>',    # Alternative system tag format
+        r'<</SYS>>',   # Alternative end system tag format
+        r'\[/INST\]',  # Alternative end instruction tag
+        r'\[INST\]',   # Alternative start instruction tag
+        r'\[/SYS\]',   # Alternative end system tag
+        r'\[SYS\]',    # Alternative start system tag
+        r'\[/INST\]',  # Another variant
+        r'\[INST\]',   # Another variant
+        r'\[/SYS\]',   # Another variant
+        r'\[SYS\]',    # Another variant
+    ]
+    
+    # Also preserve any content in square brackets that looks like instructions
+    bracket_pattern = r'\[[^\]]*\]'
+    
+    # Preserve JSON-like structures that might contain important metadata
+    json_pattern = r'\{[^}]*"improvement"[^}]*"prompt"[^}]*\}'
+    
+    # Preserve backtick-wrapped content (code blocks, etc.)
+    backtick_pattern = r'`[^`]*`'
+    
+    # Preserve asterisk-wrapped content (bold text, etc.)
+    asterisk_pattern = r'\*\*[^*]*\*\*'
+    
+    tag_mapping = {}
+    processed_text = text
+    placeholder_counter = 0
+    
+    # First, preserve special instruction tags
+    for pattern in special_tag_patterns:
+        matches = re.finditer(pattern, processed_text, re.IGNORECASE)
+        for match in matches:
+            placeholder = f"__SPECIAL_TAG_{placeholder_counter}__"
+            tag_mapping[placeholder] = match.group(0)
+            processed_text = processed_text[:match.start()] + placeholder + processed_text[match.end():]
+            placeholder_counter += 1
+    
+    # Preserve JSON-like structures
+    json_matches = re.finditer(json_pattern, processed_text)
+    for match in json_matches:
+        placeholder = f"__JSON_TAG_{placeholder_counter}__"
+        tag_mapping[placeholder] = match.group(0)
+        processed_text = processed_text[:match.start()] + placeholder + processed_text[match.end():]
+        placeholder_counter += 1
+    
+    # Preserve backtick-wrapped content
+    backtick_matches = re.finditer(backtick_pattern, processed_text)
+    for match in backtick_matches:
+        placeholder = f"__BACKTICK_TAG_{placeholder_counter}__"
+        tag_mapping[placeholder] = match.group(0)
+        processed_text = processed_text[:match.start()] + placeholder + processed_text[match.end():]
+        placeholder_counter += 1
+    
+    # Preserve asterisk-wrapped content
+    asterisk_matches = re.finditer(asterisk_pattern, processed_text)
+    for match in asterisk_matches:
+        placeholder = f"__ASTERISK_TAG_{placeholder_counter}__"
+        tag_mapping[placeholder] = match.group(0)
+        processed_text = processed_text[:match.start()] + placeholder + processed_text[match.end():]
+        placeholder_counter += 1
+    
+    # Then preserve any remaining bracketed content that might be important
+    bracket_matches = re.finditer(bracket_pattern, processed_text)
+    for match in bracket_matches:
+        # Skip if this was already processed as a special tag
+        if any(placeholder in processed_text[match.start():match.end()] for placeholder in tag_mapping.keys()):
+            continue
+        
+        # Check if the bracketed content looks like it should be preserved
+        content = match.group(0)
+        # Preserve if it contains common instruction-related words or looks like a tag
+        if any(keyword in content.lower() for keyword in ['inst', 'sys', 'user', 'assistant', 'human', 'ai', 'model', 'new prompt', 'task here', 'banned word']):
+            placeholder = f"__BRACKET_TAG_{placeholder_counter}__"
+            tag_mapping[placeholder] = content
+            processed_text = processed_text[:match.start()] + placeholder + processed_text[match.end():]
+            placeholder_counter += 1
+    
+    return processed_text, tag_mapping
+
+
+def restore_special_tags(text: str, tag_mapping: dict) -> str:
+    """
+    Restore special tags that were preserved during translation.
+    
+    Args:
+        text (str): The translated text with placeholders
+        tag_mapping (dict): Mapping of placeholders to original tags
+        
+    Returns:
+        str: Text with placeholders replaced by original tags
+    """
+    restored_text = text
+    for placeholder, original_tag in tag_mapping.items():
+        restored_text = restored_text.replace(placeholder, original_tag)
+    return restored_text
+
+
 # To be `Configurable` the root object must meet the standard type search criteria
 # { langproviders:
 #     "local": { # model_type
@@ -137,6 +252,10 @@ from garak.configurable import Configurable
 
 class LangProvider(Configurable):
     """Base class for objects that provision language"""
+
+    DEFAULT_PARAMS = {
+        "preserve_special_tags": True,  # Whether to preserve special tags during translation
+    }
 
     def __init__(self, config_root: dict = {}) -> None:
 
@@ -155,9 +274,16 @@ class LangProvider(Configurable):
         raise NotImplementedError
 
     def _get_response(self, input_text: str):
+        # Preserve special tags before translation if enabled
+        if getattr(self, 'preserve_special_tags', True):
+            processed_text, tag_mapping = preserve_special_tags(input_text)
+        else:
+            processed_text = input_text
+            tag_mapping = {}
+        
         translated_lines = []
 
-        split_text = split_input_text(input_text)
+        split_text = split_input_text(processed_text)
 
         for line in split_text:
             if self._should_skip_line(line):
@@ -172,7 +298,12 @@ class LangProvider(Configurable):
             else:
                 translated_lines += self._long_sentence_translate(line)
 
-        return "\n".join(translated_lines)
+        translated_text = "\n".join(translated_lines)
+        
+        # Restore special tags after translation if they were preserved
+        if tag_mapping:
+            return restore_special_tags(translated_text, tag_mapping)
+        return translated_text
 
     def _short_sentence_translate(self, line: str) -> str:
         translated_lines = []
