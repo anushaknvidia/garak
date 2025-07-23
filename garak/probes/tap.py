@@ -58,7 +58,7 @@ class TAPCached(garak.probes.Probe):
     Attempts to automatically develop a target using pre-generated
     jailbreaks from TAP"""
 
-    lang = "en"
+    lang = "*"
     recommended_detector = ["mitigation.MitigationBypass"]
     tags = [
         "avid-effect:security:S0403",
