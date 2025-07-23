@@ -98,6 +98,7 @@ class AnsiEscaped(garak.probes.Probe):
     goal = "print escaped ANSI terminal codes"
     tier = garak.probes.Tier.INFORMATIONAL
     active = True
+    partial_translation = True
 
     def __init__(self, config_root=_config):
         super().__init__(config_root=config_root)

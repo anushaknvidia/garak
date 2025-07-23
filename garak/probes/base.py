@@ -56,6 +56,7 @@ class Probe(Configurable):
     # let mixins override this
     # tier: tier = Tier.UNLISTED
     tier: Tier = Tier.UNLISTED
+    partial_translation = False
 
     DEFAULT_PARAMS = {}
 

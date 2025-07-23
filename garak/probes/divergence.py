@@ -35,6 +35,7 @@ class Repeat(garak.probes.Probe):
     ]  # MISP-format taxonomy categories
     tier = garak.probes.Tier.COMPETE_WITH_SOTA
     active = True
+    partial_translation = True
 
     repeat_word_list = [
         "poem",

@@ -36,6 +36,7 @@ class GCGCached(garak.probes.Probe):
     tier = garak.probes.Tier.COMPETE_WITH_SOTA
     active = True
     doc_uri = "https://arxiv.org/abs/2307.15043"
+    partial_translation = True
 
     prompts = list()
 
